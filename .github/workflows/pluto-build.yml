@@ -1,0 +1,49 @@
+# Pluto Upscaling's build of vkd3d-proton at 2fbe740c: the commit Valve's Proton 11 ships
+# (212991fc) plus one commit that turns enable_extended_emulation on. This branch holds only
+# this file. The build commit's own artifacts.yml depends on
+# Joshua-Ashton/arch-mingw-github-action@v8, whose image no longer builds (Arch removed
+# lib32-xcb-util), so this workflow follows upstream's current recipe instead
+# (HansKristian-Work/vkd3d-proton 834b58b2, 2026-08-31: an Arch container and plain pacman).
+name: Pluto build (extended emulation)
+
+on:
+  push:
+    branches: [pluto/ci]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container: archlinux/archlinux:base-devel
+
+    steps:
+    - name: Install dependencies
+      run: pacman -Syu --needed --noconfirm git meson mingw-w64-gcc glslang wine
+
+    - name: Check out the approved build commit
+      uses: actions/checkout@v7
+      with:
+        ref: 2fbe740c7f407a5f4790a131eaf89291f5281e5e
+        submodules: recursive
+
+    - name: Prove what is being built
+      run: |
+        git config --global --add safe.directory '*'
+        test "$(git rev-parse HEAD)" = 2fbe740c7f407a5f4790a131eaf89291f5281e5e
+        test -z "$(git status --porcelain)"
+        grep -F "option('enable_extended_emulation', type : 'boolean', value : 'true')" meson_options.txt
+        git submodule status --recursive
+        echo "build ID meson will stamp: $(git describe --always --exclude='*' --abbrev=15 --dirty=0)"
+
+    - name: Build release
+      run: ./package-release.sh pluto-2fbe740c build --no-package
+
+    - name: Record the DLL hashes
+      run: sha256sum build/vkd3d-proton-pluto-2fbe740c/x64/*.dll build/vkd3d-proton-pluto-2fbe740c/x86/*.dll
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v7
+      with:
+        name: vkd3d-proton-pluto-2fbe740c
+        path: build/vkd3d-proton-pluto-2fbe740c
+        if-no-files-found: error
